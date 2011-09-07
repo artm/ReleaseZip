@@ -1,0 +1,63 @@
+#!/bin/bash
+
+die() {
+  echo $@
+  exit 1
+}
+
+run() {
+  echo "$@"
+  "$@"
+}
+
+# check if working directory is clean
+git diff --quiet || die Commit first!
+
+# Defaults:
+ARCHIVE_BASENAME=$(basename $(pwd))
+ARCHIVE_SUFFIX=zip
+ARCHIVE_DIR=$ARCHIVE_BASENAME
+
+if [ -f ReleaseZip.cfg ] ; then
+  . ReleaseZip.cfg
+else
+  echo No ReleaseZip.cfg, generating...
+  cat <<EOF | tee ReleaseZip.cfg
+# archive basename, default - name of the current directory
+ARCHIVE_BASENAME=$ARCHIVE_BASENAME
+# zip is the default, uncomment for tar
+# ARCHIVE_SUFFIX=tar
+# directory name after unpacking (default is the same as basename)
+ARCHIVE_DIR=\$ARCHIVE_BASENAME
+EOF
+  echo 
+  echo Edit the configuration if necessary and run $(basename $0) again
+  exit 0
+fi
+
+TODAY=$(date +%Y%m%d)
+
+# TODO this should be prefixed with official release string
+# have we tagged today already?
+DATED_VER_BASE="$TODAY"
+v=$(git tag -l "${DATED_VER_BASE}*" | tail -1)
+case "$v" in
+  "")
+    # no releases today
+    VERSION=$DATED_VER_BASE
+    ;;
+  $DATED_VER_BASE)
+    # second release today
+    VERSION=${DATED_VER_BASE}b
+    ;;
+  *)
+    # third and the following releases today:
+    # increment letter suffix using perl
+    LETTER=${v#$DATED_VER_BASE} # extracts letter suffix
+    VERSION=${DATED_VER_BASE}$( perl -e "print ++(\$x=\"$LETTER\");" )
+    ;;
+esac
+
+ARCHIVE=${ARCHIVE_BASENAME}-${VERSION}.${ARCHIVE_SUFFIX}
+run git tag $VERSION
+run git archive $VERSION -o $ARCHIVE --prefix $ARCHIVE_DIR/
